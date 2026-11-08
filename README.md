@@ -1,2 +1,2 @@
 # EandM
-A Game ofElectricity and Magnetism
+A Game of Electricity and Magnetism
