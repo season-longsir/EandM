@@ -56,11 +56,20 @@ IRCX = 115
 IRCY = 0  #-210
 IRW = 54
 IRH = 42
-IRSTRENGTH = 3000000
+IRSTRENGTH = 100000000
 MINATTDISTANCE = 100
-MAXATTACC = 500
+MAXATTACC = 800
 
-SOLID = PLATFORMS + ((IRCX, IRCY, IRW, IRH),)
+FIXED_MAGNET_X = -80
+FIXED_MAGNET_Y = 30
+FIXED_MAGNET_SIZE = 54
+N_POLE = 1
+S_POLE = -1
+
+SOLID = PLATFORMS + (
+    (IRCX, IRCY, IRW, IRH),
+    (FIXED_MAGNET_X, FIXED_MAGNET_Y, FIXED_MAGNET_SIZE, FIXED_MAGNET_SIZE),
+)
 VERFSSPEED = (
     (GRAVITY + MAXATTACC)
     * TS
@@ -77,6 +86,7 @@ LEFT_KEY = 'a'
 RIGHT_KEY = 'd'
 JUMP_KEY = 'space'
 PICKUP_KEY = 'e'
+Q_KEY = 'q'
 
 
 class Vector:
@@ -114,11 +124,19 @@ sm_magnet = Body(
     SMW,
     SMH,
 )
+fixed_magnet = Body(
+    FIXED_MAGNET_X,
+    FIXED_MAGNET_Y,
+    FIXED_MAGNET_SIZE,
+    FIXED_MAGNET_SIZE,
+)
 
 ks_d = set()
 carryingsm = False
 pickupkd = False
 jumpkd = False
+qkd = False
+player_poles_reversed = False
 gamewon = False
 
 
@@ -143,26 +161,29 @@ def drmagnet(body: Body):
     left = body.position.x - body.width / 2
     bottom = body.position.y - size / 2
     half_width = size / 2
+    poles = magnet_poles(body)
+    left_color = NPCOLOR if poles[0][2] == N_POLE else SPCOLOR
+    right_color = NPCOLOR if poles[1][2] == N_POLE else SPCOLOR
 
-    drrectangle(left, bottom, half_width, size, NPCOLOR, OUTCOLOR)
+    drrectangle(left, bottom, half_width, size, left_color, OUTCOLOR)
     drrectangle(
         left + half_width,
         bottom,
         half_width,
         size,
-        SPCOLOR,
+        right_color,
         OUTCOLOR,
     )
     pen.color(POLECOLOR)
     pen.goto(left + half_width / 2, body.position.y)
     pen.write(
-        'N',
+        'N' if poles[0][2] == N_POLE else 'S',
         align='center',
         font=(FNAME, max(8, int(body.width / 3)), 'bold'),
     )
     pen.goto(left + half_width + half_width / 2, body.position.y)
     pen.write(
-        'S',
+        'N' if poles[1][2] == N_POLE else 'S',
         align='center',
         font=(FNAME, max(8, int(body.width / 3)), 'bold'),
     )
@@ -189,6 +210,8 @@ def drworld():
         IRONCOLOR,
         OUTCOLOR,
     )
+
+    drmagnet(fixed_magnet)
 
     pen.goto(GCX, GCY)
     pen.dot(GR * 2, GOALCOLOR)
@@ -240,6 +263,48 @@ def appironatt(body: Body, TS):
         body.velocity.y += acceleration * (dy / distance) * TS
 
 
+def magnet_poles(body: Body):
+    quarter_width = body.width / 4
+    left_pole, right_pole = N_POLE, S_POLE
+    if body is player and player_poles_reversed:
+        left_pole, right_pole = right_pole, left_pole
+    return (
+        (body.position.x - quarter_width, body.position.y, left_pole),
+        (body.position.x + quarter_width, body.position.y, right_pole),
+    )
+
+
+def nearest_fixed_pole_pair(body: Body):
+    return min(
+        (
+            (
+                math.hypot(body_pole[0] - fixed_pole[0], body_pole[1] - fixed_pole[1]),
+                body_pole,
+                fixed_pole,
+            )
+            for body_pole in magnet_poles(body)
+            for fixed_pole in magnet_poles(fixed_magnet)
+        ),
+        key=lambda pair: pair[0],
+    )
+
+
+def appfixedmag(body: Body, TS):
+    distance, body_pole, fixed_pole = nearest_fixed_pole_pair(body)
+    if distance == 0 or distance >= MINATTDISTANCE:
+        return
+
+    dx = body_pole[0] - fixed_pole[0]
+    dy = body_pole[1] - fixed_pole[1]
+    acceleration = min(
+        IRSTRENGTH / (distance * distance),
+        MAXATTACC,
+    )
+    direction = 1 if body_pole[2] == fixed_pole[2] else -1
+    body.velocity.x += direction * acceleration * (dx / distance) * TS
+    body.velocity.y += direction * acceleration * (dy / distance) * TS
+
+
 def ovlplatform(body: Body, center_x, center_y, width, height):
     bl = body.position.x - body.width / 2
     br = body.position.x + body.width / 2
@@ -286,8 +351,25 @@ def touchmago(body: Body):
     return False
 
 
+def touchfixedopposite(body: Body):
+    if not (
+        body.position.x + body.width / 2
+        >= fixed_magnet.position.x - fixed_magnet.width / 2
+        and body.position.x - body.width / 2
+        <= fixed_magnet.position.x + fixed_magnet.width / 2
+        and body.position.y + body.height / 2
+        >= fixed_magnet.position.y - fixed_magnet.height / 2
+        and body.position.y - body.height / 2
+        <= fixed_magnet.position.y + fixed_magnet.height / 2
+    ):
+        return False
+
+    _, body_pole, fixed_pole = nearest_fixed_pole_pair(body)
+    return body_pole[2] != fixed_pole[2]
+
+
 def appverf(body:Body):
-    if not touchmago(body):
+    if not touchmago(body) and not touchfixedopposite(body):
         return
 
     body.velocity.y *= VERFF
@@ -298,7 +380,32 @@ def appverf(body:Body):
 def mvbody(body:Body, TS):
     body.on_ground = False
 
+    fixed_left = fixed_magnet.position.x - fixed_magnet.width / 2
+    fixed_right = fixed_magnet.position.x + fixed_magnet.width / 2
+    fixed_bottom = fixed_magnet.position.y - fixed_magnet.height / 2
+    fixed_top = fixed_magnet.position.y + fixed_magnet.height / 2
+
+    previous_x = body.position.x
     body.position.x += body.velocity.x * TS
+    if (
+        body.position.y + body.height / 2 >= fixed_bottom
+        and body.position.y - body.height / 2 <= fixed_top
+    ):
+        if (
+            body.velocity.x > 0
+            and previous_x + body.width / 2 <= fixed_left
+            and body.position.x + body.width / 2 >= fixed_left
+        ):
+            body.position.x = fixed_left - body.width / 2
+            body.velocity.x = 0
+        elif (
+            body.velocity.x < 0
+            and previous_x - body.width / 2 >= fixed_right
+            and body.position.x - body.width / 2 <= fixed_right
+        ):
+            body.position.x = fixed_right + body.width / 2
+            body.velocity.x = 0
+
     for center_x, center_y, width, height in SOLID:
         if ovlplatform(body, center_x, center_y, width, height):
             pl = center_x - width / 2
@@ -310,7 +417,28 @@ def mvbody(body:Body, TS):
                 body.position.x = pr + body.width / 2
                 body.velocity.x = 0
 
+    previous_y = body.position.y
     body.position.y += body.velocity.y * TS
+    if (
+        body.position.x + body.width / 2 >= fixed_left
+        and body.position.x - body.width / 2 <= fixed_right
+    ):
+        if (
+            body.velocity.y < 0
+            and previous_y - body.height / 2 >= fixed_top
+            and body.position.y - body.height / 2 <= fixed_top
+        ):
+            body.position.y = fixed_top + body.height / 2
+            body.velocity.y = 0
+            body.on_ground = True
+        elif (
+            body.velocity.y > 0
+            and previous_y + body.height / 2 <= fixed_bottom
+            and body.position.y + body.height / 2 >= fixed_bottom
+        ):
+            body.position.y = fixed_bottom - body.height / 2
+            body.velocity.y = 0
+
     for center_x, center_y, width, height in SOLID:
         if ovlplatform(body, center_x, center_y, width, height):
             pb = center_y - height / 2
@@ -342,6 +470,7 @@ def updatep(TS):
     )
     player.velocity.y -= GRAVITY * TS
     appironatt(player, TS)
+    appfixedmag(player, TS)
     appverf(player)
     mvbody(player, TS)
 
@@ -354,6 +483,7 @@ def updddropped(TS):
     sm_magnet.velocity.x *= friction_factor
     sm_magnet.velocity.y -= GRAVITY * TS
     appironatt(sm_magnet, TS)
+    appfixedmag(sm_magnet, TS)
     appverf(sm_magnet)
     mvbody(sm_magnet, TS)
 
@@ -449,6 +579,19 @@ def rpick():
     pickupkd = False
 
 
+def pq():
+    global player_poles_reversed, qkd
+    if qkd:
+        return
+    qkd = True
+    player_poles_reversed = not player_poles_reversed
+
+
+def rq():
+    global qkd
+    qkd = False
+
+
 screen.listen()
 screen.onkeypress(pleft, LEFT_KEY)
 screen.onkeyrelease(rleft, LEFT_KEY)
@@ -458,6 +601,8 @@ screen.onkeypress(pjump, JUMP_KEY)
 screen.onkeyrelease(rjump, JUMP_KEY)
 screen.onkeypress(ppick, PICKUP_KEY)
 screen.onkeyrelease(rpick, PICKUP_KEY)
+screen.onkeypress(pq, Q_KEY)
+screen.onkeyrelease(rq, Q_KEY)
 
 game_loop()
 screen.mainloop()
