@@ -8,17 +8,17 @@ HEIGHT = 600
 DELAY = 16
 TS = DELAY / 1000
 
-BGCOLOR = "#F4F4F4"
-OUTCOLOR = "#222222"
-PLATCOLOR = "#666666"
-IRONCOLOR = "#888888"
-NPCOLOR = "#E84B3C"
-SPCOLOR = "#3978D5"
-POLECOLOR = "#FFFFFF"
-GOALCOLOR = "#E9B72F"
-TCOLOR = "#222222"
+BGCOLOR = '#F4F4F4'
+OUTCOLOR = '#222222'
+PLATCOLOR = '#666666'
+IRONCOLOR = '#888888'
+NPCOLOR = '#E84B3C'
+SPCOLOR = '#3978D5'
+POLECOLOR = '#FFFFFF'
+GOALCOLOR = '#E9B72F'
+TCOLOR = '#222222'
 
-FNAME = "Microsoft YaHei"
+FNAME = 'Microsoft YaHei'
 HUDSIZE = 14
 WINSIZE = 30
 
@@ -43,6 +43,7 @@ MAXHSPEED = 280
 HFRICTION = 10
 GRAVITY = 4000
 JUMPSPEED = 1000
+VERFF = 0.25
 
 SMSX = -260
 SMSY = FRTOP + 20
@@ -52,27 +53,34 @@ PICKRANGE = 72
 DROP_GAP = 8
 
 IRCX = 115
-IRCY = -210
+IRCY = 0  #-210
 IRW = 54
 IRH = 42
 IRSTRENGTH = 3000000
 MINATTDISTANCE = 100
-MAXATTACC = 3000
+MAXATTACC = 500
 
-SOLID_OBJECTS = PLATFORMS + ((IRCX, IRCY, IRW, IRH),)
+SOLID = PLATFORMS + ((IRCX, IRCY, IRW, IRH),)
+VERFSSPEED = (
+    (GRAVITY + MAXATTACC)
+    * TS
+    * VERFF
+    / (1 - VERFF)
+    + 1
+)
 
 GCX = 320
 GCY = FRTOP + 22
 GR = 22
 
-LEFT_KEY = "a"
-RIGHT_KEY = "d"
-JUMP_KEY = "space"
-PICKUP_KEY = "e"
+LEFT_KEY = 'a'
+RIGHT_KEY = 'd'
+JUMP_KEY = 'space'
+PICKUP_KEY = 'e'
 
 
 class Vector:
-    """用于保存位置和速度的二维向量。"""
+    '''用于保存位置和速度的二维向量。'''
 
     def __init__(self, x, y):
         self.x = x
@@ -90,7 +98,7 @@ class Body:
 
 screen = turtle.Screen()
 screen.setup(WIDTH, HEIGHT)
-screen.title("磁轨跃迁 Electric and Magnetic")
+screen.title('磁轨跃迁 Electric and Magnetic')
 screen.bgcolor(BGCOLOR)
 screen.tracer(0, 0)
 
@@ -130,7 +138,7 @@ def drrectangle(left, bottom, width, height, fill_color, OUTCOLOR):
     pen.penup()
 
 
-def drmagnet(body):
+def drmagnet(body: Body):
     size = body.width
     left = body.position.x - body.width / 2
     bottom = body.position.y - size / 2
@@ -148,15 +156,15 @@ def drmagnet(body):
     pen.color(POLECOLOR)
     pen.goto(left + half_width / 2, body.position.y)
     pen.write(
-        "N",
-        align="center",
-        font=(FNAME, max(8, int(body.width / 3)), "bold"),
+        'N',
+        align='center',
+        font=(FNAME, max(8, int(body.width / 3)), 'bold'),
     )
     pen.goto(left + half_width + half_width / 2, body.position.y)
     pen.write(
-        "S",
-        align="center",
-        font=(FNAME, max(8, int(body.width / 3)), "bold"),
+        'S',
+        align='center',
+        font=(FNAME, max(8, int(body.width / 3)), 'bold'),
     )
 
 
@@ -197,25 +205,25 @@ def drworld():
 
     pen.goto(-WIDTH / 2 + 20, HEIGHT / 2 - 35)
     pen.color(TCOLOR)
-    carrying_text = "是" if carryingsm else "否"
-    pen.write(
-        f"携带小磁铁：{carrying_text}",
-        font=(FNAME, HUDSIZE, "normal"),
-    )
+    # carrying_text = '是' if carryingsm else '否'
+    # pen.write(
+    #     f'携带小磁铁：{carrying_text}',
+    #     font=(FNAME, HUDSIZE, 'normal'),
+    # )
 
     if gamewon:
         pen.goto(0, 35)
         pen.color(TCOLOR)
         pen.write(
-            "通关！",
-            align="center",
-            font=(FNAME, WINSIZE, "bold"),
+            '通关！',
+            align='center',
+            font=(FNAME, WINSIZE, 'bold'),
         )
 
     screen.update()
 
 
-def appironatt(body, TS):
+def appironatt(body: Body, TS):
     dx = IRCX - body.position.x
     dy = IRCY - body.position.y
     distance = math.hypot(dx, dy)
@@ -232,52 +240,87 @@ def appironatt(body, TS):
         body.velocity.y += acceleration * (dy / distance) * TS
 
 
-def ovlplatform(body, center_x, center_y, width, height):
-    body_left = body.position.x - body.width / 2
-    body_right = body.position.x + body.width / 2
-    body_bottom = body.position.y - body.height / 2
-    body_top = body.position.y + body.height / 2
+def ovlplatform(body: Body, center_x, center_y, width, height):
+    bl = body.position.x - body.width / 2
+    br = body.position.x + body.width / 2
+    bb = body.position.y - body.height / 2
+    bt = body.position.y + body.height / 2
 
-    platform_left = center_x - width / 2
-    platform_right = center_x + width / 2
-    platform_bottom = center_y - height / 2
-    platform_top = center_y + height / 2
+    pl = center_x - width / 2
+    pr = center_x + width / 2
+    pb = center_y - height / 2
+    pt = center_y + height / 2
 
     return (
-        body_right > platform_left
-        and body_left < platform_right
-        and body_top > platform_bottom
-        and body_bottom < platform_top
+        br > pl
+        and bl < pr
+        and bt > pb
+        and bb < pt
     )
 
 
-def mvbody(body, TS):
+def touchmago(body: Body):
+    mago = (
+        (IRCX, IRCY, IRW, IRH),
+    )
+    for other_body in (player, sm_magnet):
+        if other_body is body:
+            continue
+        mago += (
+            (
+                other_body.position.x,
+                other_body.position.y,
+                other_body.width,
+                other_body.height,
+            ),
+        )
+
+    for center_x, center_y, width, height in mago:
+        if (
+            body.position.x + body.width / 2 >= center_x - width / 2
+            and body.position.x - body.width / 2 <= center_x + width / 2
+            and body.position.y + body.height / 2 >= center_y - height / 2
+            and body.position.y - body.height / 2 <= center_y + height / 2
+        ):
+            return True
+    return False
+
+
+def appverf(body:Body):
+    if not touchmago(body):
+        return
+
+    body.velocity.y *= VERFF
+    if abs(body.velocity.y) <= VERFSSPEED:
+        body.velocity.y = 0
+
+
+def mvbody(body:Body, TS):
     body.on_ground = False
 
-    # 分轴移动并在碰撞时修正位置，避免穿过平台。
     body.position.x += body.velocity.x * TS
-    for center_x, center_y, width, height in SOLID_OBJECTS:
+    for center_x, center_y, width, height in SOLID:
         if ovlplatform(body, center_x, center_y, width, height):
-            platform_left = center_x - width / 2
-            platform_right = center_x + width / 2
+            pl = center_x - width / 2
+            pr = center_x + width / 2
             if body.velocity.x > 0:
-                body.position.x = platform_left - body.width / 2
+                body.position.x = pl - body.width / 2
                 body.velocity.x = 0
             elif body.velocity.x < 0:
-                body.position.x = platform_right + body.width / 2
+                body.position.x = pr + body.width / 2
                 body.velocity.x = 0
 
     body.position.y += body.velocity.y * TS
-    for center_x, center_y, width, height in SOLID_OBJECTS:
+    for center_x, center_y, width, height in SOLID:
         if ovlplatform(body, center_x, center_y, width, height):
-            platform_bottom = center_y - height / 2
-            platform_top = center_y + height / 2
+            pb = center_y - height / 2
+            pt = center_y + height / 2
             if body.velocity.y < 0:
-                body.position.y = platform_top + body.height / 2
+                body.position.y = pt + body.height / 2
                 body.velocity.y = 0
                 body.on_ground = True
             elif body.velocity.y > 0:
-                body.position.y = platform_bottom - body.height / 2
+                body.position.y = pb - body.height / 2
                 body.velocity.y = 0
 
 
@@ -299,6 +342,7 @@ def updatep(TS):
     )
     player.velocity.y -= GRAVITY * TS
     appironatt(player, TS)
+    appverf(player)
     mvbody(player, TS)
 
 
@@ -306,8 +350,11 @@ def updddropped(TS):
     if carryingsm:
         return
 
+    friction_factor = max(0, 1 - HFRICTION * TS)
+    sm_magnet.velocity.x *= friction_factor
     sm_magnet.velocity.y -= GRAVITY * TS
     appironatt(sm_magnet, TS)
+    appverf(sm_magnet)
     mvbody(sm_magnet, TS)
 
 
